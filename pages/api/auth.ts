@@ -29,4 +29,7 @@ export default async function handler(
     console.error('An error occurred:', error)
     res.status(500).json({ 
       error: 'Internal Server Error',
-      details: error.m
+      details: error.message 
+    })
+  }
+}
