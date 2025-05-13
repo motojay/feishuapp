@@ -1,0 +1,12 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/auth",
+      "destination": "/pages/api/auth.ts"
+    },
+    {
+      "source": "/api/callback",
+      "destination": "/pages/api/callback.ts"
+    }
+  ]
+}
