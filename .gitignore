@@ -1,1 +1,17 @@
-node_modules
+# 依赖目录
+node_modules/
+
+# 构建输出
+.next/
+
+# 环境变量
+.env*
+.env.local
+
+# IDE配置
+.vscode/
+.idea/
+
+# 系统文件
+.DS_Store
+Thumbs.db

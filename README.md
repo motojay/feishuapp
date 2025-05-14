@@ -1,12 +1,5 @@
-# Feishu 认证项目
+# Feishu 认证接口项目
 
-## 功能说明
-本项目实现了飞书认证功能，包含两个主要 API 接口：
-- `/api/auth`：用于跳转至飞书授权页面，生成随机 state 参数防止 CSRF 攻击，并将 state 存储到会话中。
-- `/api/callback`：用于处理飞书授权回调，验证 state 参数，然后使用应用 ID 和密钥换取飞书租户访问令牌。
-
-## 问题解决记录
-已解决找不到 `iron-session/next` 模块或其相应类型声明的问题，通过在项目根目录安装 `iron-session` 依赖解决。
-
-## 后续操作
-若要将项目部署到 GitHub Pages，由于其是静态托管，无法执行后端返回的 HTML 脚本，需要创建静态前端页面处理回调结果。
+此项目包含飞书认证接口相关代码，解决调用 `/api/auth` 接口时 `getSessionFromRedis` 不是函数的问题。主要修改点如下：
+1. 确认 `auth.ts` 中 `getSessionFromRedis` 的导入路径。
+2. 确保 `session.ts` 中 `getSessionFromRedis` 函数存在。
