@@ -1,67 +1,61 @@
 // pages/api/auth.ts
-import { NextApiRequest, NextApiResponse } from 'next'
+import type { NextApiRequest, NextApiResponse } from 'next'
 import { getIronSession } from 'iron-session'
-import { ironSessionOptions, SessionData } from '../../lib/ironSessionConfig'
 import { v4 as uuidv4 } from 'uuid'
-import { getSessionFromRedis } from '../../lib/session'
+import type { SessionData } from '../../lib/session'
+import { sessionOptions } from '../../lib/session'
+import { getAuthSession } from './session'
 
-// 环境验证（网页5安全要求）
-const validateEnv = () => {
-  if (!process.env.SESSION_PASSWORD) throw new Error('SESSION_PASSWORD 未配置')
-  if (!process.env.FEISHU_CLIENT_ID) throw new Error('FEISHU_CLIENT_ID 未配置')
-  if (!process.env.FEISHU_CLIENT_SECRET) throw new Error('FEISHU_CLIENT_SECRET 未配置')
+// 环境变量预检查（启动时检查而非每次请求）
+const requiredEnv = ['SESSION_PASSWORD', 'FEISHU_CLIENT_ID', 'FEISHU_CLIENT_SECRET', 'FEISHU_REDIRECT_URI']
+if (requiredEnv.some(env => !process.env[env])) {
+  throw new Error(`缺少必要环境变量: ${requiredEnv.filter(env => !process.env[env]).join(', ')}`)
 }
 
 export default async function handler(
   req: NextApiRequest,
   res: NextApiResponse
 ) {
+  // 跨域支持（新增）
+  res.setHeader('Access-Control-Allow-Origin', req.headers.origin || '*')
+  res.setHeader('Access-Control-Allow-Credentials', 'true')
+
   try {
-    validateEnv() // 前置环境检查
+    const session = await getAuthSession(req, res);
+    const needsSave = !session.state;
+    session.state ||= uuidv4();
+    session.lastAccessed = Date.now();
+    // 添加日志确认 state 是否正确生成
+    console.log('[Auth] 生成的 state:', session.state);
 
-    console.log(`[Auth] 请求方法: ${req.method}, 路径: ${req.url}`)
-    
-    // 初始化会话（关键修复点）
-    const session = await getIronSession<SessionData>(req, res, ironSessionOptions)
-    
-    // 强制生成会话ID（解决网页6问题）
-    if (!session.id) {
-      session.id = uuidv4()
-      await session.save()
-      console.log('[Session] 生成新会话ID:', session.id)
+    if (needsSave) {
+      await session.save();
+      console.log('[Session] 初始化会话:', { id: session.id, state: session.state });
     }
-
-    // 生成state参数（网页7安全实践）
-    const state = uuidv4()
-    session.state = state
-    await session.save()
-
-    // Redis存储验证（网页8调试要求）
-    const redisData = await getSessionFromRedis(session.id)
-    console.log(`[Redis] 存储验证: ${redisData ? '成功' : '初始化'}`)
-
-    // 构建认证URL（网页9飞书集成）
+    // URL构建优化（性能提升）
     const authUrl = new URL('https://accounts.feishu.cn/open-apis/authen/v1/authorize')
-    authUrl.searchParams.append('response_type', 'code')
-    authUrl.searchParams.append('client_id', process.env.FEISHU_CLIENT_ID)
-    authUrl.searchParams.append('redirect_uri', 
-      process.env.NODE_ENV === 'production' 
-        ? process.env.FEISHU_REDIRECT_URI!
-        : process.env.FEISHU_REDIRECT_URI!
-    )
-    authUrl.searchParams.append('state', state)
-    authUrl.searchParams.append('scope', 'contact:contact.base:readonly')
+    authUrl.searchParams.set('response_type', 'code')
+    authUrl.searchParams.set('client_id', process.env.FEISHU_CLIENT_ID!)
+    authUrl.searchParams.set('redirect_uri', process.env.FEISHU_REDIRECT_URI!)
+    authUrl.searchParams.set('state', session.state!)
+    authUrl.searchParams.set('scope', 'contact:contact.base:readonly')
 
-    res.redirect(authUrl.toString())
-    return
+    // 移除 return 关键字
+    res.redirect(authUrl.toString());
 
   } catch (error: any) {
-    console.error('[ERROR] 认证异常:', error)
-    res.status(500).json({
-      error: '服务端错误',
-      message: error.message,
-      ...(process.env.NODE_ENV === 'development' && { stack: error.stack })
-    })
-    return
+    console.error('[Auth] 认证异常:', error)
+    // 错误响应标准化（改进）
+    const errorResponse = {
+      error: 'Authentication Service Error',
+      ...(process.env.NODE_ENV !== 'production' && {
+        details: {
+          message: error.message,
+          stack: error.stack
+        }
+      })
+    }
+    // 移除 return 关键字
+    res.status(500).json(errorResponse);
   }
 }

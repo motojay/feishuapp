@@ -1,83 +1,55 @@
+// lib/session.ts
 import { getIronSession } from 'iron-session'
 import { NextApiRequest, NextApiResponse } from 'next'
-import { createClient } from 'redis'
 import { v4 as uuidv4 } from 'uuid'
+import { SessionData } from '../../lib/session';
+import { sessionOptions } from '../../lib/ironSessionConfig'
 
 
-// ================== 类型定义 ==================
-export interface SessionData {
-  id: string
-  state: string
-  codeVerifier?: string
-  userToken?: string
-}
-
-// ================== Redis 配置 ==================
-const redisClient = createClient({
-  url: process.env.KV_REST_API_URL,
-  password: process.env.KV_REST_API_TOKEN,
-  socket: {
-    reconnectStrategy: (retries) => Math.min(retries * 100, 5000), // 指数退避重连策略
-    connectTimeout: 5000 // 5秒连接超时
-  }
-});
-
-// 错误监听（保留您原有的错误处理）
-redisClient.on('error', (err) => console.error('Redis Client Error:', err));
-
-// 连接Redis（保留您原有的连接逻辑）
-redisClient.connect().catch(console.error);
-
-export default redisClient;
-
-// ================== 会话存储核心方法 ==================
-export async function getSessionFromRedis(sessionId: string): Promise<SessionData | null> {
-  try {
-    const data = await redisClient.get(`session:${sessionId}`)
-    return data ? JSON.parse(data) : null
-  } catch (error) {
-    console.error('Redis会话读取失败:', error)
-    return null
-  }
-}
-
-export async function saveSessionToRedis(sessionId: string, data: SessionData): Promise<void> {
-  try {
-    await redisClient.setEx(`session:${sessionId}`, 3600, JSON.stringify(data))
-  } catch (error) {
-    console.error('Redis会话存储失败:', error)
-  }
-}
-
-// ================== Iron Session 配置 ==================
-export const sessionConfig = {
-  cookieName: "feishu_oauth",
-  password: process.env.COOKIE_PASSWORD || '32位默认密码请修改', 
-  cookieOptions: {
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax" as const,
-    httpOnly: true,
-    maxAge: 86400 // 24小时
-  }
-}
 
 // ================== 会话管理方法 ==================
-export async function getAuthSession(req: NextApiRequest, res: NextApiResponse) {
-  const session = await getIronSession<SessionData>(req, res, sessionConfig)
-  
-  // 自动生成会话 ID
+// 提取公共的会话初始化逻辑
+async function initializeSession(session: any) {
   if (!session.id) {
-    session.id = uuidv4()
-    await session.save()
-    console.log('Generated new session ID:', session.id)
+    session.id = uuidv4();
+    session.lastAccessed = Date.now();
   }
-
-  return session
+  return session;
 }
 
-export async function updateSession(req: NextApiRequest, res: NextApiResponse, data: Partial<SessionData>) {
+export async function getAuthSession(req: NextApiRequest, res: NextApiResponse) {
+  const session = await getIronSession<SessionData>(req, res, sessionOptions);
+  return initializeSession(session);
+}
+
+export async function initAuthSession(
+  req: NextApiRequest,
+  res: NextApiResponse,
+  data: Pick<SessionData, 'state' | 'codeVerifier'> & Partial<SessionData>
+) {
+  const session = await getAuthSession(req, res);
+  Object.assign(session, {
+    ...data,
+    lastAccessed: Date.now()
+  });
+  await session.save();
+  return session;
+}
+
+export async function updateSession(
+  req: NextApiRequest, 
+  res: NextApiResponse, 
+  data: Partial<SessionData>
+) {
   const session = await getAuthSession(req, res)
-  Object.assign(session, data)
-  await session.save()
-  await saveSessionToRedis(session.id, session)
+  Object.assign(session, {
+    ...data,
+    lastAccessed: Date.now() // 每次更新刷新访问时间
+  })
+  try {
+    await session.save()
+    console.log('[Session] 会话更新保存成功:', session.id)
+  } catch (error) {
+    console.error('[Session] 会话更新保存失败:', error)
+  }
 }
