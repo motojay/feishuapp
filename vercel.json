@@ -1,31 +1,4 @@
 {
   "version": 2,
-  "builds": [
-    {
-      "src": "/pages/api/auth.js",  
-      "use": "@vercel/node"  
-    }
-  ],
-
-  "routes": [
-    {
-      "src": "/pages/api/(.*)",  
-      "dest": "/pages/api/auth.js"  
-    }
-  ],
-
-  "rewrites": [
-    {
-      "source": "/api/auth",
-      "destination": "/pages/api/auth.ts"
-    },
-    {
-      "source": "/api/callback",
-      "destination": "/pages/api/callback.ts"
-    }
-  ],
-  "regions": ["cle1"],
-  "env": {
-
-  }
+  "framework": "nextjs"
 }
