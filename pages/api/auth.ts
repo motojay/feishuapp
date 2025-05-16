@@ -23,29 +23,27 @@ export default async function handler(
   try {
     const session = await getAuthSession(req, res);
     const needsSave = !session.state;
-    session.state ||= uuidv4();
+    session.state = uuidv4();
     session.lastAccessed = Date.now();
-    // 添加日志确认 state 是否正确生成
     console.log('[Auth] 生成的 state:', session.state);
 
     if (needsSave) {
       await session.save();
       console.log('[Session] 初始化会话:', { id: session.id, state: session.state });
     }
-    // URL构建优化（性能提升）
+
     const authUrl = new URL('https://accounts.feishu.cn/open-apis/authen/v1/authorize')
     authUrl.searchParams.set('response_type', 'code')
     authUrl.searchParams.set('client_id', process.env.FEISHU_CLIENT_ID!)
     authUrl.searchParams.set('redirect_uri', process.env.FEISHU_REDIRECT_URI!)
     authUrl.searchParams.set('state', session.state!)
     authUrl.searchParams.set('scope', 'contact:contact.base:readonly')
-
-    // 移除 return 关键字
+    
+    // ✅ 唯一响应：重定向到飞书认证
     res.redirect(authUrl.toString());
 
   } catch (error: any) {
     console.error('[Auth] 认证异常:', error)
-    // 错误响应标准化（改进）
     const errorResponse = {
       error: 'Authentication Service Error',
       ...(process.env.NODE_ENV !== 'production' && {
@@ -55,7 +53,7 @@ export default async function handler(
         }
       })
     }
-    // 移除 return 关键字
+    // ✅ 错误时必须返回响应
     res.status(500).json(errorResponse);
   }
 }
